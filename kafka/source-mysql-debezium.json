@@ -1,0 +1,49 @@
+{
+  "name": "mysql-source-connector-dbz",
+  "config": {
+    "connector.class": "io.debezium.connector.mysql.MySqlConnector",
+    "database.hostname": "mysql",
+    "database.port": "3306",
+    "database.user": "nanp",
+    "database.password": "nanp",
+    "database.dbname": "TYROK",
+    "database.include.list": "TYROK",
+    "database.server.id": "1",
+    "topic.prefix": "fullfillment.TYROK",
+    "table.include.list": "inventory.client",
+    "plugin.name": "mysql",
+
+    "slot.name": "debezium_client_slot",
+    "publication.name": "dbz_client_publication",
+    "publication.autocreate.mode": "disabled",
+    "snapshot.mode": "initial",
+    "heartbeat.interval.ms": "30000",
+    
+    "schema.history.internal.kafka.bootstrap.servers": "kafka:9092",
+    "schema.history.internal.kafka.topic": "schema-history.TYROK",
+
+    "key.converter": "io.confluent.connect.avro.AvroConverter",
+    "key.converter.schema.registry.url": "http://schema-registry:8081",
+    "value.converter": "io.confluent.connect.avro.AvroConverter",
+    "value.converter.schema.registry.url": "http://schema-registry:8081",
+
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.add.fields": "op,table,lsn",
+
+    "decimal.handling.mode": "double",
+    "time.precision.mode": "connect",
+    "max.batch.size": "2048",
+    "max.queue.size": "8192",
+
+    "errors.retry.delay.max.ms": "60000",
+    "errors.retry.timeout": "300000",
+    "errors.tolerance": "all",
+    "errors.log.enable": "true",
+    "errors.deadletterqueue.topic.name": "dead_letter_queue",
+    "errors.deadletterqueue.context.headers.enable": "true"
+
+  }
+}
+
+
