@@ -145,7 +145,7 @@ python main.py put --bucket my-bucket --local /path/to/local/file
 ```
 
 #### nifi
-0- url: http://localhost:8443/nifi/login
+0- url: https://localhost:8443/nifi/login
 
 1- just import template `mysql-nifi-minio.xml`
 
