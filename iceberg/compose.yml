@@ -1,0 +1,108 @@
+name: bigdata_nifi
+services:
+
+  catalog:
+    image: ghcr.io/projectnessie/nessie:0.107.3-java
+    container_name: catalog
+    hostname: catalog
+    restart: always
+    ports:
+      - 19120:19120
+    depends_on:
+      minio:
+        condition: service_healthy
+    volumes:
+      - nessie_data:/data
+      - share_data:/partage
+    environment:
+      # Configuration de Nessie pour utiliser MinIO comme backend de stockage
+      # Vous pouvez ajuster ces variables en fonction de votre configuration MinIO
+      NESSIE_STORAGE_TYPE: "S3"
+      NESSIE_S3_ENDPOINT: "http://minio:9000"
+      NESSIE_S3_REGION: "us-east-1"
+      NESSIE_S3_ACCESS_KEY: "admin"
+      NESSIE_S3_SECRET_KEY: "password123"
+      NESSIE_S3_BUCKET: "nessie-bucket"
+      NESSIE_VERSION_STORE_TYPE: IN_MEMORY # Utiliser ROCKSDB ou MONGODB pour de la persistance réelle
+      QUARKUS_HTTP_PORT: 19120
+      QUARKUS_LOG_LEVEL: INFO
+      NESSIE_SERVER_SEND_STACK_TRACE_TO_CLIENT: true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://catalog:19120/api/v1/trees"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - bigdata
+
+  catalog-admin:
+    image: ghcr.io/projectnessie/nessie-server-admin:0.107.3-java
+    container_name: catalog-admin
+    hostname: catalog-admin
+    restart: always
+    environment:
+      # URL interne au réseau Docker pour contacter le serveur
+      QUARKUS_REST_CLIENT_NESSIE_CLIENT_BASE_URI: http://catalog:19120/api/v1
+      QUARKUS_HTTP_PORT: 8081
+      QUARKUS_REST_CLIENT_NESSIE_CLIENT_READ_TIMEOUT: 30000
+      # Config logging
+      QUARKUS_LOG_CONSOLE_ENABLE: true
+      QUARKUS_LOG_LEVEL: INFO
+    ports:
+      - 8481:8081
+    depends_on:
+      - catalog
+    volumes:
+      - share_data:/partage
+    networks:
+      - bigdata
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: minio
+    hostname: minio
+    ports:
+      - "9030:9000" # API S3
+      - "9031:9001" # Console Web (UI)
+    environment:
+      # Access Key (Username) et de Secret Key (Password)
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    volumes:
+      - minio_data:/data
+      - share_data:/partage
+    command: server /data --console-address ":9001"
+    restart: always
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - bigdata
+
+volumes:
+  nessie_data:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/nessie
+      o: bind
+  minio_data:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/minio
+      o: bind
+  share_data:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/share_folder
+      o: bind
+
+networks:
+  bigdata:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: bigdata_bridge

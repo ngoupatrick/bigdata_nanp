@@ -373,7 +373,7 @@ services:
     hostname: streamlit_app
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8501/_stcore/health || exit 1"]
+      test: ["CMD", "curl --fail http://localhost:8501/_stcore/health || exit 1"]
       interval: 10s # Intervalle entre les tentatives de healthcheck
       timeout: 5s # Durée maximale pour considérer une tentative de healthcheck comme échouée      retries: 5
       start_period: 30s # Durée d'attente avant de commencer les healthchecks (le temps que le service démarre)

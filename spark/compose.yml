@@ -9,12 +9,12 @@ services:
     user: root
     restart: always
     environment:
-      - SPARK_MODE=master
-      - SPARK_RPC_AUTHENTICATION_ENABLED=no
-      - SPARK_RPC_ENCRYPTION_ENABLED=no
-      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-      - SPARK_SSL_ENABLED=no
-      - SPARK_USER=spark
+      SPARK_MODE: master
+      SPARK_RPC_AUTHENTICATION_ENABLED: no
+      SPARK_RPC_ENCRYPTION_ENABLED: no
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: no
+      SPARK_SSL_ENABLED: no
+      SPARK_USER: spark
     # Commande explicite pour l'image officielle
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
@@ -33,26 +33,29 @@ services:
       - jupyter_pyspark_data:/opt/spark/work-dir
 
   #spark-worker
-  spark-worker:
+  spark-worker-1:
     image: apache/spark-py:v3.4.0
-    container_name: spark-worker
-    hostname: spark-worker
+    container_name: spark-worker-1
+    hostname: spark-worker-1
     user: root
     restart: always
     depends_on:
       spark-master:
-        condition: service_healthy    
+        condition: service_healthy
+    ports:
+      - "8981:8081" # UI Spark Worker
     environment:
-      - SPARK_MODE=worker
-      - PYSPARK_PYTHON=python3
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=1G
-      - SPARK_WORKER_CORES=1
-      - SPARK_RPC_AUTHENTICATION_ENABLED=no
-      - SPARK_RPC_ENCRYPTION_ENABLED=no
-      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-      - SPARK_SSL_ENABLED=no
-      - SPARK_USER=spark
+      SPARK_MODE: worker
+      PYSPARK_PYTHON: python3
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_MEMORY: 1G
+      SPARK_WORKER_CORES: 1
+      SPARK_RPC_AUTHENTICATION_ENABLED: no
+      SPARK_RPC_ENCRYPTION_ENABLED: no
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: no
+      SPARK_SSL_ENABLED: no
+      SPARK_USER: spark
+      SPARK_WORKER_WEBUI_PORT: 8081
     volumes:
       #- pyspark_data:/opt/spark-apps # Dossier pour vos scripts Python
       - share_data:/partage
@@ -60,13 +63,52 @@ services:
     #command: sleep infinity
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://spark-worker:8081/"]
+      test: ["CMD", "curl", "-f", "http://spark-worker-1:8081/"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
     networks:
       - bigdata
+
+  spark-worker-2:
+    image: apache/spark-py:v3.4.0
+    container_name: spark-worker-2
+    hostname: spark-worker-2
+    user: root
+    restart: always
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    ports:
+      - "8982:8082" # UI Spark Worker
+    environment:
+      SPARK_MODE: worker
+      PYSPARK_PYTHON: python3
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_MEMORY: 1G
+      SPARK_WORKER_CORES: 1
+      SPARK_RPC_AUTHENTICATION_ENABLED: no
+      SPARK_RPC_ENCRYPTION_ENABLED: no
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: no
+      SPARK_SSL_ENABLED: no
+      SPARK_USER: spark
+      SPARK_WORKER_WEBUI_PORT: 8082
+    volumes:
+      #- pyspark_data:/opt/spark-apps # Dossier pour vos scripts Python
+      - share_data:/partage
+      - jupyter_pyspark_data:/opt/spark/work-dir
+    #command: sleep infinity
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://spark-worker-2:8082/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - bigdata
+
 
   jupyter-pyspark:
     image: jupyter/pyspark-notebook:spark-3.4.0
@@ -93,10 +135,10 @@ services:
     healthcheck:
       #test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://jupyter-pyspark:8888/api"]
       test: ["CMD", "curl", "-f", "http://localhost:8888/api/status"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      interval: 10s # Vérifie toutes les 10 secondes
+      timeout: 5s # Timeout de 5 secondes pour chaque tentative
+      retries: 10 # Nombre de tentatives avant de considérer le service comme non sain
+      start_period: 5s # Délai d'attente avant de commencer les vérifications de santé
     networks:
       - bigdata
 
