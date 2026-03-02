@@ -1,0 +1,442 @@
+# links:
+# https://github.com/redpanda-data/redpanda-labs/tree/main/docker-compose/cdc
+
+name: bigdata_nifi
+
+services:
+
+  redpanda-0:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.3.9
+    container_name: redpanda-0
+    hostname: redpanda-0
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      # Address the broker advertises to clients that connect to the Kafka API.
+      # Use the internal addresses to connect to the Redpanda brokers'
+      # from inside the same Docker network.
+      # Use the external addresses to connect to the Redpanda brokers'
+      # from outside the Docker network.
+      - --advertise-kafka-addr internal://redpanda-0:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      # Address the broker advertises to clients that connect to the HTTP Proxy.
+      - --advertise-pandaproxy-addr internal://redpanda-0:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      # Redpanda brokers use the RPC API to communicate with each other internally.
+      - --rpc-addr redpanda-0:33145
+      - --advertise-rpc-addr redpanda-0:33145
+      - --node-id 0
+      # Mode dev-container uses well-known configuration properties for development in containers.
+      - --mode dev-container
+      # Tells Seastar (the framework Redpanda uses under the hood) to use 1 core on the system.
+      - --smp 1              # Utilise un seul cœur CPU      
+      - --memory 1G          # Limite à 1 Go de RAM
+      - --overprovisioned    # Indique qu'il partage les ressources (indispensable en Docker)
+      - --default-log-level=info
+      - --set redpanda.cloud_storage_enabled=false # Désactive le Tiered Storage
+      - --set redpanda.enable_central_config_binding=true
+      - --set redpanda.partition_autobalancing_mode=off # Désactive le Continuous Balancing
+      - --set default_topic_replications=1
+      - --set default_topic_partitions=1
+      - --set storage_min_free_bytes=104857600
+      - --set redpanda.log_cleanup_policy=compact,delete # Active la compaction pour tous les topics (utile pour les topics de configuration et d'état de Connect)
+      - --set redpanda.log_compaction_interval_ms=600000 # Scan toutes les 10 min
+      - --set redpanda.min_cleanable_dirty_ratio=0.2     # Plus agressif (20%)
+      - --set redpanda.retention_bytes=1073741824          # Limite la taille totale des logs à 1 Go (pour éviter de remplir le disque)
+      - --set redpanda.retention_ms=3600000                 # Limite la rétention à 1 heure (pour éviter de remplir le disque)
+      - --set redpanda.segment_size=104857600                # Limite la taille des segments à 100 Mo (pour faciliter les nettoyages)
+      - --set redpanda.delete_retention_ms=60000              # Temps de rétention des segments supprimés (1 min)
+      - --set redpanda.compacted_log_segment_size=10485760   # Taille des segments pour les topics compacts (10 Mo)
+      - --set redpanda.max_compaction_lag_ms=300000           # Temps maximum avant de compacter un segment (5 min)
+      - --set redpanda.compaction_throttle_ms=1000              # Délai entre les opérations de compaction (1 sec)
+      - --set redpanda.max_message_bytes=10485760                # Taille maximale des messages à 10 Mo (pour éviter les gros messages qui bloquent la compaction)
+      - --set redpanda.message_format_version=3.0-IV1               # Version du format de message (pour compatibilité avec les connecteurs modernes)
+      - --set redpanda.log_index_size_max_bytes=1048576              # Taille maximale des index à 1 Mo (pour éviter les gros index qui ralentissent la compaction)
+      - --set redpanda.log_index_interval_bytes=4096                   # Intervalle entre les entrées d'index (4 Ko)
+      - --set redpanda.auto_create_topics_enabled=true # Permet la création automatique des topics (utile pour les tests et les connecteurs qui créent des topics de configuration)
+    volumes:
+      - redpanda-0:/var/lib/redpanda/data
+      - share_data:/partage
+    healthcheck:
+      #test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]      
+      test: ["CMD-SHELL", "rpk redpanda admin brokers list | grep $(hostname) | grep -q 'true'"]
+      interval: 5s # Intervalle entre les tentatives de healthcheck
+      timeout: 5s # Durée maximale pour considérer une tentative de healthcheck comme échouée
+      retries: 10 # Nombre de tentatives avant de considérer le service comme non sain
+      start_period: 5s # Durée d'attente avant de commencer les healthchecks (le temps que le service démarre)
+    networks:
+      - bigdata
+    ports:
+      - 18081:18081
+      - 18082:18082
+      - 19092:19092
+      - 19644:9644
+
+  redpanda-1:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.3.9
+    container_name: redpanda-1
+    hostname: redpanda-1
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:29092
+      - --advertise-kafka-addr internal://redpanda-1:9092,external://localhost:29092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:28082
+      - --advertise-pandaproxy-addr internal://redpanda-1:8082,external://localhost:28082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:28081
+      - --rpc-addr redpanda-1:33145
+      - --advertise-rpc-addr redpanda-1:33145
+      - --node-id 1
+      - --seeds redpanda-0:33145
+      - --mode dev-container
+      - --smp 1
+      - --default-log-level=info      
+      - --set redpanda.cloud_storage_enabled=false # Désactive le Tiered Storage
+      - --set redpanda.enable_central_config_binding=true
+      - --set redpanda.partition_autobalancing_mode=off # Désactive le Continuous Balancing
+      - --set default_topic_replications=1
+      - --set default_topic_partitions=1
+      - --set storage_min_free_bytes=104857600
+      - --set redpanda.log_cleanup_policy=compact,delete # Active la compaction pour tous les topics (utile pour les topics de configuration et d'état de Connect)
+      - --set redpanda.log_compaction_interval_ms=600000 # Scan toutes les 10 min
+      - --set redpanda.min_cleanable_dirty_ratio=0.2     # Plus agressif (20%)
+      - --set redpanda.retention_bytes=1073741824          # Limite la taille totale des logs à 1 Go (pour éviter de remplir le disque)
+      - --set redpanda.retention_ms=3600000                 # Limite la rétention à 1 heure (pour éviter de remplir le disque)
+      - --set redpanda.segment_size=104857600                # Limite la taille des segments à 100 Mo (pour faciliter les nettoyages)
+      - --set redpanda.delete_retention_ms=60000              # Temps de rétention des segments supprimés (1 min)
+      - --set redpanda.compacted_log_segment_size=10485760   # Taille des segments pour les topics compacts (10 Mo)
+      - --set redpanda.max_compaction_lag_ms=300000           # Temps maximum avant de compacter un segment (5 min)
+      - --set redpanda.compaction_throttle_ms=1000              # Délai entre les opérations de compaction (1 sec)
+      - --set redpanda.max_message_bytes=10485760                # Taille maximale des messages à 10 Mo (pour éviter les gros messages qui bloquent la compaction)
+      - --set redpanda.message_format_version=3.0-IV1               # Version du format de message (pour compatibilité avec les connecteurs modernes)
+      - --set redpanda.log_index_size_max_bytes=1048576              # Taille maximale des index à 1 Mo (pour éviter les gros index qui ralentissent la compaction)
+      - --set redpanda.log_index_interval_bytes=4096                   # Intervalle entre les entrées d'index (4 Ko)
+      - --set redpanda.auto_create_topics_enabled=true # Permet la création automatique des topics (utile pour les tests et les connecteurs qui créent des topics de configuration)
+    volumes:
+      - redpanda-1:/var/lib/redpanda/data
+      - share_data:/partage
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - bigdata
+    ports:
+      - 28081:28081
+      - 28082:28082
+      - 29092:29092
+      - 29644:9644
+    depends_on:
+      redpanda-0:
+        condition: service_healthy # Attend que le healthcheck de 'kafka' passe
+    
+  redpanda-2:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.3.9
+    container_name: redpanda-2
+    hostname: redpanda-2
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:39092
+      - --advertise-kafka-addr internal://redpanda-2:9092,external://localhost:39092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:38082
+      - --advertise-pandaproxy-addr internal://redpanda-2:8082,external://localhost:38082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:38081
+      - --rpc-addr redpanda-2:33145
+      - --advertise-rpc-addr redpanda-2:33145
+      - --node-id 2
+      - --seeds redpanda-0:33145
+      - --mode dev-container
+      - --smp 1
+      - --default-log-level=info      
+      - --set redpanda.cloud_storage_enabled=false # Désactive le Tiered Storage
+      - --set redpanda.enable_central_config_binding=true
+      - --set redpanda.partition_autobalancing_mode=off # Désactive le Continuous Balancing    
+      - --set default_topic_replications=1
+      - --set default_topic_partitions=1
+      - --set storage_min_free_bytes=104857600
+      - --set redpanda.log_cleanup_policy=compact,delete # Active la compaction pour tous les topics (utile pour les topics de configuration et d'état de Connect)
+      - --set redpanda.log_compaction_interval_ms=600000 # Scan toutes les 10 min
+      - --set redpanda.min_cleanable_dirty_ratio=0.2     # Plus agressif (20%)
+      - --set redpanda.retention_bytes=1073741824          # Limite la taille totale des logs à 1 Go (pour éviter de remplir le disque)
+      - --set redpanda.retention_ms=3600000                 # Limite la rétention à 1 heure (pour éviter de remplir le disque)
+      - --set redpanda.segment_size=104857600                # Limite la taille des segments à 100 Mo (pour faciliter les nettoyages)
+      - --set redpanda.delete_retention_ms=60000              # Temps de rétention des segments supprimés (1 min)
+      - --set redpanda.compacted_log_segment_size=10485760   # Taille des segments pour les topics compacts (10 Mo)
+      - --set redpanda.max_compaction_lag_ms=300000           # Temps maximum avant de compacter un segment (5 min)
+      - --set redpanda.compaction_throttle_ms=1000              # Délai entre les opérations de compaction (1 sec)
+      - --set redpanda.max_message_bytes=10485760                # Taille maximale des messages à 10 Mo (pour éviter les gros messages qui bloquent la compaction)
+      - --set redpanda.message_format_version=3.0-IV1               # Version du format de message (pour compatibilité avec les connecteurs modernes)
+      - --set redpanda.log_index_size_max_bytes=1048576              # Taille maximale des index à 1 Mo (pour éviter les gros index qui ralentissent la compaction)
+      - --set redpanda.log_index_interval_bytes=4096                   # Intervalle entre les entrées d'index (4 Ko)
+      - --set redpanda.auto_create_topics_enabled=true # Permet la création automatique des topics (utile pour les tests et les connecteurs qui créent des topics de configuration)
+    volumes:
+      - redpanda-2:/var/lib/redpanda/data
+      - share_data:/partage
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - bigdata
+    ports:
+      - 38081:38081
+      - 38082:38082
+      - 39092:39092
+      - 39644:9644
+    depends_on:
+      redpanda-0:
+        condition: service_healthy # Attend que le healthcheck de 'kafka' passe
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v3.5.3
+    container_name: redpanda-console
+    hostname: redpanda-console
+    networks:
+      - bigdata
+    entrypoint: /bin/sh
+    command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      AUTH_ENABLED: false
+    ports:
+      - 8100:8080
+    volumes:
+      - share_data:/partage
+      - ./config.yml:/tmp/config.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    depends_on:
+      redpanda-0:
+        condition: service_healthy # Attend que le healthcheck de 'kafka' passe
+      connect:
+        condition: service_healthy # Attend que le healthcheck de 'connect' passe
+      
+  # Votre image Connect personnalisée
+  connect:
+    build: .
+    container_name: connect
+    hostname: connect    
+    ports:
+      - 8093:8083
+    volumes:
+      - share_data:/partage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/"]
+      interval: 10s # Intervalle entre les tentatives de healthcheck
+      timeout: 5s # Durée maximale pour considérer une tentative de healthcheck comme échouée
+      retries: 10 # Nombre de tentatives avant de considérer le service comme non sain
+      start_period: 30s # Durée d'attente avant de commencer les healthchecks (le temps que le service démarre)
+    environment:
+      BOOTSTRAP_SERVERS: redpanda-1:9092,redpanda-2:9092,redpanda-0:9092
+      ADVERTISED_HOST_NAME: connect
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      GROUP_ID: connect-cluster
+      CONFIG_STORAGE_TOPIC: connect-configs
+      OFFSET_STORAGE_TOPIC: connect-offsets
+      STATUS_STORAGE_TOPIC: connect-status
+      KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://redpanda-0:8081
+      VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://redpanda-0:8081
+      # Limite la mémoire au niveau de Java (Heap)
+      KAFKA_HEAP_OPTS: -Xms512M -Xmx1G
+      # Désactive les logs inutiles pour économiser du CPU
+      CONNECT_LOG4J_ROOT_LOGLEVEL: WARN
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G # Limite stricte au niveau Docker
+          cpus: '1.0'  # Limite à 1 cœur CPU
+    depends_on:
+      redpanda-0:
+        condition: service_healthy # Attend que le healthcheck de 'kafka' passe
+    networks:
+      - bigdata
+
+  # Cible S3 (Gratuit/Open Source)
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    hostname: mysql
+    # mysql -u root -p'root_password' -e "GRANT ALL PRIVILEGES ON *.* TO 'nanp'@'%'; FLUSH PRIVILEGES;"
+    environment:
+      - MYSQL_ROOT_PASSWORD=mysql
+      - MYSQL_USER=nanp
+      - MYSQL_PASSWORD=nanp
+      - MYSQL_DATABASE=nanp_db
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./my-custom.cnf:/etc/mysql/conf.d/my-custom.cnf
+      - share_data:/partage
+    networks:
+      - bigdata
+    ports:
+      - "8889:3306"
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: minio
+    hostname: minio
+    ports:
+      - "9030:9000" # API S3
+      - "9031:9001" # Console Web (UI)
+    environment:
+      # Access Key (Username) et de Secret Key (Password)
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    volumes:
+      - minio_data:/data
+      - share_data:/partage
+    command: server /data --console-address ":9001"
+    restart: always
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - bigdata
+
+  #https://gotify.net/docs/config
+  gotify:
+    image: gotify/server:2
+    container_name: gotify
+    hostname: gotify
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    environment:
+      GOTIFY_DEFAULTUSER_NAME: admin
+      GOTIFY_DEFAULTUSER_PASSWORD: admin
+      GOTIFY_DEFAULTUSER_PERMISSIONS: "read,write,delete"
+      GOTIFY_SERVER_PORT: 80
+      GOTIFY_DATABASE_DIALECT: sqlite3
+      GOTIFY_DATABASE_CONNECTION: data/gotify.db
+      GOTIFY_UPLOADEDIMAGESDIR: data/images
+      GOTIFY_PLUGINSDIR: data/plugins
+    networks:
+      - bigdata
+    ports:
+      - 8023:80 # Interface Web sur le port 80
+    volumes:
+      - gotify_data:/app/data
+      - share_data:/partage
+    restart: always
+
+  notifier-service:
+    build:
+      context: ./python/notifier
+      dockerfile: Dockerfile
+    hostname: notifier-service
+    container_name: notifier-service
+    depends_on:
+      redpanda-0:
+        condition: service_healthy
+      gotify:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "python", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./python/notifier:/app
+      - share_data:/partage
+    networks:
+      - bigdata
+
+  streamlit_app:
+    build:
+      context: ./python/streamlit
+      dockerfile: Dockerfile
+    container_name: streamlit_app
+    hostname: streamlit_app
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8501/_stcore/health || exit 1"]
+      interval: 10s # Intervalle entre les tentatives de healthcheck
+      timeout: 5s # Durée maximale pour considérer une tentative de healthcheck comme échouée      retries: 5
+      start_period: 30s # Durée d'attente avant de commencer les healthchecks (le temps que le service démarre)
+      retries: 3
+    ports:
+      - "8561:8501"
+    volumes:
+      - ./python/streamlit:/app
+      - share_data:/partage
+      - ./python/streamlit/.streamlit:/app/.streamlit
+    depends_on:
+      mysql:
+        condition: service_healthy          
+    networks:
+      - bigdata
+
+  
+volumes:
+  mysql_data:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/mysql
+      o: bind
+  minio_data:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/minio
+      o: bind  
+  gotify_data:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/gotify
+      o: bind
+  redpanda-0:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/redpanda/redpanda-0
+      o: bind
+  redpanda-1:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/redpanda/redpanda-1
+      o: bind
+  redpanda-2:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/redpanda/redpanda-2
+      o: bind
+  share_data:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/share_folder
+      o: bind
+
+networks:
+  bigdata:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: bigdata_bridge

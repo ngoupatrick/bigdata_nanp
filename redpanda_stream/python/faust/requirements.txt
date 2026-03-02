@@ -1,0 +1,4 @@
+faust-streaming==0.11.3
+aiohttp==3.13.3
+python-schema-registry-client==2.6.1
+avro-python3==1.10.2

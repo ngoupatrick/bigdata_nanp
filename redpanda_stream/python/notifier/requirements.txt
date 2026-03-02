@@ -1,0 +1,4 @@
+quixstreams[avro]==3.23.3
+apprise==1.9.7
+python-dotenv==1.2.2
+fastavro==1.12.1
