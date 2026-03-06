@@ -400,19 +400,7 @@ docker exec minio mc rb --force myalias/[nom-du-bucket]
 
 * #### **Kafka:**
 
-```sh
-# 0- connect to kafka container
-docker exec -it redpanda-0 bash
-# 1- move to scripts folder
-cd /opt/kafka/bin/
-
-# list of topics created
-./kafka-topics.sh --list --bootstrap-server localhost:9092
-# describe a topic
-./kafka-topics.sh --describe --topic bank_sandaga.REDPANDA.TYROK.client --bootstrap-server localhost:9092
-# read live data produce inside a topic
-./kafka-console-consumer.sh --topic bank_sandaga.REDPANDA.TYROK.client --from-beginning --bootstrap-server localhost:9092
-```
+You can use [`rpk documentation`](https://docs.redpanda.com/current/get-started/intro-to-rpk/ "rpk commands") or spin of kafka client service in your `compose.yml` file.
 
 * #### **Connector:**
 

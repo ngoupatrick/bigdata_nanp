@@ -186,11 +186,26 @@ docker exec python_base python /app/python/python_minio/main.py read-all --bucke
 
 # send csv or parquet files to minio bucket
 docker exec python_base python /app/python/python_minio/main.py put --bucket [my-bucket] --local [/path/to/local/file] --remote [name_in_minio]
-
-
 ```
 
 ---
 
+* #### **Kafka:**
+
+```sh
+# 0- connect to kafka container
+docker exec -it kafka bash
+# 1- move to scripts folder
+cd /opt/kafka/bin/
+
+# list of topics created
+./kafka-topics.sh --list --bootstrap-server localhost:9092
+# describe a topic
+./kafka-topics.sh --describe --topic [topic_name] --bootstrap-server localhost:9092
+# read live data produce inside a topic
+./kafka-console-consumer.sh --topic [topic_name] --from-beginning --bootstrap-server localhost:9092
+```
+
+---
 
 
