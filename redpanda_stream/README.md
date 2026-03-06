@@ -32,7 +32,7 @@ It will help you to deploy and test a simple **Streaming** pipeline using **Dock
 - **connect:** used to launch `source (mysql, debezium, tyrok-source-connector.json)` and `sink (S3, confluent, tyrok-sink-connector.json) connectors`.
 - **notifier-service:** used to `monitoring` kafka topics and send `alert` to app like `slack or telegram` (in this case `gotify`)
 - **gotify:** Notification app client like `slack or telegram`.
-- **setup-automation:** used to `initialize Mysql (User, databases and tables)`, and also `launch connectors source and sink`. You disable it before launching the stack.
+- **setup-automation:** used to `initialize Mysql (User, databases and tables)`, and also `launch connectors source and sink`. You can disable it before launching the stack (there for, you must absolutly launch connect throw command line).
 - **streamlit_app:** `Client App for Mysql`. You can find `code in folder python/streamlit`.
 - **streamlit-dashboard:** `Client App for Minio`. used to see every datas push inside `Minio bucket client-redpanda` with some `stats`. You can find `code in folder python/streamlit-result`.
 - **python_base:** Container used to interact with `Mysql (folder python/python_mysql)` and `Minio (folder python/python_minio)`.
@@ -42,7 +42,9 @@ It will help you to deploy and test a simple **Streaming** pipeline using **Dock
 ## **Files & Folders:**
 
 1- **images:** contains screenshot.
+
 2- **notes:** notes and trash infos.
+
 3- **plugins:** contains 3 files, but only 2 are usefull.
 
 - `confluentinc-kafka-connect-avro-converter-8.1.1.zip`: install inside `connect container`. Provide class to implement `Avro` data manipulation.
