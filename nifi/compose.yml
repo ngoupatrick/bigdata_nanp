@@ -39,11 +39,12 @@ services:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 30s
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./my-custom.cnf:/etc/mysql/conf.d/my-custom.cnf
+      - ./my-custom.cnf:/etc/mysql/conf.d/my-custom.cnf:ro
+      - ./scripts:/scripts:ro
       - share_data:/partage
     networks:
       - bigdata
@@ -81,21 +82,47 @@ services:
     networks:
       - bigdata
 
-  python_base:
+  #python_base:
+  #  build:
+  #    context: .
+  #    dockerfile: dockerfile_python
+  #  container_name: python_base
+  #  hostname: python_base
+  #  restart: always
+  #  healthcheck:
+  #    test: ["CMD", "python", "--version"]
+  #    interval: 30s
+  #    timeout: 10s
+  #    retries: 3
+  #  volumes:
+  #    - ./python:/app
+  #    - share_data:/partage
+  #  networks:
+  #    - bigdata
+
+  # --- AUTOMATISATION (LANCE LE SCRIPT) ---
+  setup-automation:
     build:
-      context: .
-      dockerfile: dockerfile_python
-    container_name: python_base
-    hostname: python_base
-    restart: always
-    healthcheck:
-      test: ["CMD", "python", "--version"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      context: ./scripts
+      dockerfile: Dockerfile
+    container_name: setup-automation
+    hostname: setup-automation
     volumes:
-      - ./python:/app
-      - share_data:/partage
+      - ./scripts/setup_pipeline.sh:/setup_pipeline.sh
+      - ./scripts/init_mysql.sql:/init_mysql.sql
+      - ./scripts/setup_tyrok.sql:/setup_tyrok.sql
+      - ./scripts/insert_client.sql:/insert_client.sql
+      - ./scripts/insert_product.sql:/insert_product.sql
+      - ./scripts/insert_sales.sql:/insert_sales.sql
+    depends_on:
+      mysql:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+      - |
+        chmod +x /setup_pipeline.sh
+        cd /
+        source /setup_pipeline.sh
     networks:
       - bigdata
 

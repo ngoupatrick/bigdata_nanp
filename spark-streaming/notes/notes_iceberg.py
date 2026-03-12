@@ -134,7 +134,6 @@ ORDER BY id
 
 #==== add_files ====
 # Ajouter les fichiers Parquet existants à la table Iceberg
-# croner
 spark.sql(f"""
     CALL {db_name}.system.add_files(
         table => '{db_name}.{schema_name}.{table_name}',
@@ -169,23 +168,8 @@ spark.sql(f"""
     )
 """)
 
-# triez frequement vos données physiquement.
-#spark.sql(f"ALTER TABLE {db_name}.{schema_name}.{table_name} WRITE ORDERED BY id")
-
-spark.sql(f"""
-CALL {db_name}.system.rewrite_data_files(
-  table => '{db_name}.{schema_name}.{table_name}', 
-  strategy => 'sort', 
-  sort_order => 'id ASC'
-)
-""")
-
-# suppression des snapshots
-spark.sql(f"CALL {db_name}.system.expire_snapshots('{db_name}.{schema_name}.{table_name}')")
-
 #==== Requêtes SQL ====
 # Exécuter une requête SQL sur la table Iceberg
-# nombre de fichier par jour
 result = spark.sql(f"""
     SELECT year, month, day, hour, count(*) as count
     FROM {db_name}.{schema_name}.{table_name}

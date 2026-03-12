@@ -127,7 +127,8 @@ services:
     environment:
       - JUPYTER_ENABLE_LAB=yes
       - PYSPARK_SUBMIT_ARGS=--packages org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.3.1,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 pyspark-shell
-      - JUPYTER_TOKEN=9bde05bc7eb51dfd9fcc8a74db73b7ed2a625d3e9cf216da
+    #  - JUPYTER_TOKEN=9bde05bc7eb51dfd9fcc8a74db73b7ed2a625d3e9cf216da
+      - JUPYTER_TOKEN=secret
       - SPARK_OPTS=--packages org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.3.1,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
     volumes:
       - jupyter_pyspark_data:/home/jovyan/work
@@ -156,7 +157,12 @@ services:
     volumes:
       - minio_data:/data
       - share_data:/partage
-    command: server /data --console-address ":9001"
+    entrypoint: ["/bin/sh", "-c"] # On force le shell ici
+    command: >
+            "minio server /data --console-address ':9001' & 
+             sleep 5; 
+             mc alias set myalias http://localhost:9000 admin password123;
+             wait"
     restart: always
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]

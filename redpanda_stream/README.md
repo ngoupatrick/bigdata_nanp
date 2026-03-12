@@ -27,7 +27,7 @@ It will help you to deploy and test a simple **Streaming** pipeline using **Dock
 
 - **mysql:** contains database `TYROK`
 - **kafka cluster:** Spread over three nodes (`redpanda-0`, `redpanda-1`, `redpanda-2`). used to ingest tables `client`, `product`, `sales`. `redpanda-0` act as `master node` and the two others as `slave nodes`. **NOTES:** If it's take too much resources, comment or shutdown `redpanda-1` and `redpanda-2`
-- **redpanda-console:** UI used to manage kafka (redpanda) cluster `[Topics, Connectors, Consure Groups]`.
+- **redpanda-console:** UI used to manage kafka (redpanda) cluster `[Topics, Connectors, Consumer Groups]`.
 - **minio:** store result in `parquet` format. It use bucket `client-redpanda`.
 - **connect:** used to launch `source (mysql, debezium, tyrok-source-connector.json)` and `sink (S3, confluent, tyrok-sink-connector.json) connectors`.
 - **notifier-service:** used to `monitoring` kafka topics and send `alert` to app like `slack or telegram` (in this case `gotify`)
@@ -384,7 +384,7 @@ sudo rm -rf /Change/Path/redpanda/redpanda-2/*
 # 1- stop all and clean some volume
 docker compose down -v --remove-orphans
 # 2- clean folders
-sudo rm -rf /Change/Path/redpanda/mysql/*
+sudo rm -rf /Change/Path/mysql/*
 ```
 
 * #### **delete minio bucket:** you can use **minio UI** container to recreate all bucket.

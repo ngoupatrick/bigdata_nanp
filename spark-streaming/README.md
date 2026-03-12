@@ -21,7 +21,7 @@ It will help you to deploy and test a simple **Batch** pipeline using **Docker**
 **Components:**
 - **Mysql:** contains database `TYROK`
 - **NIFI:** use to ingest tables `client`, `product`, `sales`
-- **MINIO:** store result in `parquet` format. It use buckets `raw-bucket/[client|product|sales]`
+- **MINIO:** store result in `parquet` format. It use buckets `[client/product/sales]-bucket`
 - **PYTHON:** contains two folders:
 
 1- `python_mysql`: scripts use to add and list data in mysql
@@ -86,7 +86,7 @@ make sur you create all databases and tables
 
 ### - minio
 url: http://localhost:9031/
-create all buckets (only **`raw-bucket`**)
+create all buckets
 
 ### - python
 #### mysql
@@ -130,24 +130,24 @@ cd /app/python_minio
 python main.py --help
 
 # list bucket content
-python main.py list --bucket raw-bucket/client
+python main.py list --bucket my-bucket
 
 # count files in bucket
-python main.py count --bucket raw-bucket/client
+python main.py count --bucket my-bucket
 
 # read parquet or csv file
-python main.py read --bucket raw-bucket/client --file data.csv --style fancy_grid
-python main.py read --bucket raw-bucket/client --file data.parquet --style fancy_grid
+python main.py read --bucket my-bucket --file data.csv --style fancy_grid
+python main.py read --bucket my-bucket --file data.parquet --style fancy_grid
 
 # add file in bucket
-python main.py put --bucket raw-bucket/client --local /path/to/local/file
+python main.py put --bucket my-bucket --local /path/to/local/file
 
 ```
 
 #### nifi
 0- url: https://localhost:8443/nifi/login
 
-1- just import template `mysql-nifi-minio-client.xml` for `client` or `mysql-nifi-minio-full.xml` for `all`
+1- just import template `mysql-nifi-minio.xml`
 
 2- change username and password in `QueryDatabaseTablerecord` and `PutS3Object`
 
@@ -161,17 +161,9 @@ Pool connection -> **Database Driver ClassName**: `com.mysql.jdbc.Driver`
 
 Pool connection -> **Database Driver Location(s)**: `/partage/jars/mysql-connector-java-8.0.30.jar`
 
-Pool connection -> **Database User**: `nanp`
-
-Pool connection -> **Password**: `nanp`
-
-update attribute -> **filename**: `[client|product|sales]_${now():format('yyyyMMddHHmmss')}.parquet`
+update attribute -> **filename**: `client_${now():format('yyyyMMdd_HHmmss')}.parquet`
 
 PutS3Oject -> **EndPoint Override URL**: `http://minio:9000`
-
-PutS3Oject -> **Access Key ID**: `admin`
-
-PutS3Oject -> **Secret Access Key**: `password123`
 
 
 <p align="center">

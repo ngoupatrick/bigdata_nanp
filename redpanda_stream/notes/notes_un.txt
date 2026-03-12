@@ -106,6 +106,8 @@ docker exec minio mc rb --force myalias/nom-du-bucket
 "rotate.schedule.interval.ms": "30000",
 
 "rotate.interval.ms": "30000",
+# 0- clean minio bucket client-redpanda
+
 # 1----- REDPANDA clean
 sudo rm -rf /home/patrick/Téléchargements/ressources/redpanda/redpanda-0/*
 sudo rm -rf /home/patrick/Téléchargements/ressources/redpanda/redpanda-1/*

@@ -1,0 +1,50 @@
+# This is an example configuration file for Redpanda Console v3.x.x
+
+#----------------------------------------------------------------------------
+# Kafka configuration
+#----------------------------------------------------------------------------
+kafka:
+  # Brokers is a list of bootstrap servers with ports.
+  brokers:
+    - "redpanda-0:9092"
+#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
+# Schema Registry configuration
+#----------------------------------------------------------------------------
+schemaRegistry:
+  enabled: true
+  urls:
+    - "http://redpanda-0:8081"
+#----------------------------------------------------------------------------
+# Redpanda Admin API configuration
+#----------------------------------------------------------------------------
+redpanda:
+  adminApi:
+    enabled: true
+    urls:
+      - "http://redpanda-0:9644"
+#----------------------------------------------------------------------------
+# Kafka Connect configuration (configuration for connecting to external Kafka Connect clusters, not Redpanda Connect)
+#----------------------------------------------------------------------------
+kafkaConnect:
+  enabled: true
+  clusters:    
+    - name: my-connect-cluster
+      url: "http://connect:8083"
+#----------------------------------------------------------------------------
+# Console configuration
+#----------------------------------------------------------------------------
+console:
+  topicDocumentation:
+    enabled: false
+
+#----------------------------------------------------------------------------
+# Logger configuration
+#----------------------------------------------------------------------------
+logger:
+  level: info
+#----------------------------------------------------------------------------
+# Analytics / telemetry (optional)
+#----------------------------------------------------------------------------
+analytics:
+  enabled: false

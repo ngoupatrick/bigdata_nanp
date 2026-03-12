@@ -1,0 +1,13 @@
+# === trash
+# tyrok-source-connector.json
+
+
+
+# ====== Some clean (folder)
+# 0- clean minio bucket client-redpanda
+
+# 1----- REDPANDA clean
+sudo rm -rf /home/patrick/Téléchargements/ressources/redpanda/redpanda_spark/*
+
+# 2----- MYSQL clean
+sudo rm -rf /home/patrick/Téléchargements/ressources/mysql/*

@@ -1,0 +1,379 @@
+name: bigdata_nifi
+services:
+
+  redpanda-0:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.3.9
+    container_name: redpanda-0
+    hostname: redpanda-0
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092      
+      - --advertise-kafka-addr internal://redpanda-0:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda-0:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr redpanda-0:33145
+      - --advertise-rpc-addr redpanda-0:33145
+      - --node-id 0
+      - --mode dev-container
+      - --smp 1              # Utilise un seul cœur CPU      
+      - --memory 1G          # Limite à 1 Go de RAM
+      - --overprovisioned    # Indique qu'il partage les ressources (indispensable en Docker)
+      - --default-log-level=info
+      - --set redpanda.cloud_storage_enabled=false # Désactive le Tiered Storage
+      - --set redpanda.enable_central_config_binding=true
+      - --set redpanda.partition_autobalancing_mode=off # Désactive le Continuous Balancing
+      - --set default_topic_replications=1
+      - --set default_topic_partitions=1
+      - --set storage_min_free_bytes=104857600
+      - --set redpanda.log_cleanup_policy=compact,delete # Active la compaction pour tous les topics (utile pour les topics de configuration et d'état de Connect)
+      - --set redpanda.log_compaction_interval_ms=600000 # Scan toutes les 10 min
+      - --set redpanda.min_cleanable_dirty_ratio=0.2     # Plus agressif (20%)
+      - --set redpanda.retention_bytes=1073741824          # Limite la taille totale des logs à 1 Go (pour éviter de remplir le disque)
+      - --set redpanda.retention_ms=3600000                 # Limite la rétention à 1 heure (pour éviter de remplir le disque)
+      - --set redpanda.segment_size=104857600                # Limite la taille des segments à 100 Mo (pour faciliter les nettoyages)
+      - --set redpanda.delete_retention_ms=60000              # Temps de rétention des segments supprimés (1 min)
+      - --set redpanda.compacted_log_segment_size=10485760   # Taille des segments pour les topics compacts (10 Mo)
+      - --set redpanda.max_compaction_lag_ms=300000           # Temps maximum avant de compacter un segment (5 min)
+      - --set redpanda.compaction_throttle_ms=1000              # Délai entre les opérations de compaction (1 sec)
+      - --set redpanda.max_message_bytes=10485760                # Taille maximale des messages à 10 Mo (pour éviter les gros messages qui bloquent la compaction)
+      - --set redpanda.message_format_version=3.0-IV1               # Version du format de message (pour compatibilité avec les connecteurs modernes)
+      - --set redpanda.log_index_size_max_bytes=1048576              # Taille maximale des index à 1 Mo (pour éviter les gros index qui ralentissent la compaction)
+      - --set redpanda.log_index_interval_bytes=4096                   # Intervalle entre les entrées d'index (4 Ko)
+      - --set redpanda.auto_create_topics_enabled=true # Permet la création automatique des topics (utile pour les tests et les connecteurs qui créent des topics de configuration)
+    volumes:
+      - redpanda-0:/var/lib/redpanda/data
+      - share_data:/partage
+    healthcheck:
+      test: ["CMD-SHELL", "rpk redpanda admin brokers list | grep $(hostname) | grep -q 'true'"]
+      interval: 8s # Intervalle entre les tentatives de healthcheck
+      timeout: 5s # Durée maximale pour considérer une tentative de healthcheck comme échouée
+      retries: 10 # Nombre de tentatives avant de considérer le service comme non sain
+      start_period: 10s # Durée d'attente avant de commencer les healthchecks (le temps que le service démarre)
+    networks:
+      - bigdata
+    ports:
+      - 18081:18081
+      - 18082:18082
+      - 19092:19092
+      - 19644:9644
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v3.5.3
+    container_name: redpanda-console
+    hostname: redpanda-console    
+    entrypoint: /bin/sh
+    command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      AUTH_ENABLED: false
+    ports:
+      - 8200:8080
+    volumes:
+      - share_data:/partage
+      - ./config.yml:/tmp/config.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://redpanda-console:8080/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    depends_on:
+      redpanda-0:
+        condition: service_healthy # Attend que le healthcheck de 'kafka' passe
+      connect:
+        condition: service_healthy # Attend que le healthcheck de 'connect' passe
+    networks:
+      - bigdata
+
+  connect:
+    build: .
+    container_name: connect
+    hostname: connect    
+    ports:
+      - 8093:8083
+    volumes:
+      - share_data:/partage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://connect:8083/"]
+      interval: 5s # Intervalle entre les tentatives de healthcheck
+      timeout: 5s # Durée maximale pour considérer une tentative de healthcheck comme échouée
+      retries: 10 # Nombre de tentatives avant de considérer le service comme non sain
+      start_period: 5s # Durée d'attente avant de commencer les healthchecks (le temps que le service démarre)
+    environment:
+      BOOTSTRAP_SERVERS: redpanda-0:9092
+      ADVERTISED_HOST_NAME: connect
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      GROUP_ID: connect-cluster
+      CONFIG_STORAGE_TOPIC: connect-configs
+      OFFSET_STORAGE_TOPIC: connect-offsets
+      STATUS_STORAGE_TOPIC: connect-status
+      #KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://redpanda-0:8081
+      #VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://redpanda-0:8081
+      # Limite la mémoire au niveau de Java (Heap)
+      KAFKA_HEAP_OPTS: -Xms512M -Xmx1G
+      # Désactive les logs inutiles pour économiser du CPU
+      CONNECT_LOG4J_ROOT_LOGLEVEL: WARN
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G # Limite stricte au niveau Docker
+          cpus: '1.0'  # Limite à 1 cœur CPU
+    depends_on:
+      redpanda-0:
+        condition: service_healthy # Attend que le healthcheck de 'kafka' passe
+    networks:
+      - bigdata
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    hostname: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=mysql
+      - MYSQL_USER=nanp
+      - MYSQL_PASSWORD=nanp
+      - MYSQL_DATABASE=nanp_db
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./my-custom.cnf:/etc/mysql/conf.d/my-custom.cnf
+      - share_data:/partage
+    networks:
+      - bigdata
+    ports:
+      - "8889:3306"
+
+  streamlit_app:
+    build:
+      context: ./python/streamlit
+      dockerfile: Dockerfile
+    container_name: streamlit_app
+    hostname: streamlit_app
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl --fail http://localhost:8501/_stcore/health || exit 1"]
+      interval: 5s # Intervalle entre les tentatives de healthcheck
+      timeout: 5s # Durée maximale pour considérer une tentative de healthcheck comme échouée      retries: 5
+      start_period: 5s # Durée d'attente avant de commencer les healthchecks (le temps que le service démarre)
+      retries: 10 # Nombre de tentatives avant de considérer le service comme non sain
+    ports:
+      - "8541:8501"
+    volumes:
+      - ./python/streamlit:/app
+      - share_data:/partage
+      - ./python/streamlit/.streamlit:/app/.streamlit
+    depends_on:
+      mysql:
+        condition: service_healthy          
+    networks:
+      - bigdata
+
+  # --- AUTOMATISATION (LANCE LE SCRIPT) ---
+  setup-automation:
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile
+    container_name: setup-automation
+    hostname: setup-automation
+    #profiles: ["extra"] # Ne démarrera QUE si vous le demandez explicitement
+    volumes:
+      - ./scripts/setup_pipeline.sh:/setup_pipeline.sh
+      - ./scripts/init_mysql.sql:/init_mysql.sql
+      - ./scripts/setup_tyrok.sql:/setup_tyrok.sql
+      - ./tyrok-source-connector.json:/tyrok-source-connector.json
+      - ./tyrok-source-connector-json.json:/tyrok-source-connector-json.json
+    depends_on:
+      mysql:
+        condition: service_healthy
+      connect:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+      - |
+        chmod +x /setup_pipeline.sh
+        cd /
+        source /setup_pipeline.sh
+    networks:
+      - bigdata
+
+  spark-master:
+    #size: 551 MB
+    image: apache/spark-py:v3.4.0
+    container_name: spark-master
+    hostname: spark-master
+    user: root
+    restart: always
+    environment:
+      SPARK_MODE: master
+      SPARK_RPC_AUTHENTICATION_ENABLED: no
+      SPARK_RPC_ENCRYPTION_ENABLED: no
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: no
+      SPARK_SSL_ENABLED: no
+      SPARK_USER: spark
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "8980:8080" # UI Spark
+      - "7977:7077"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://spark-master:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - bigdata
+    volumes:
+      - share_data:/partage
+      - jupyter_pyspark_data:/opt/spark/work-dir
+
+  #spark-worker
+  spark-worker-1:
+    image: apache/spark-py:v3.4.0
+    container_name: spark-worker-1
+    hostname: spark-worker-1
+    user: root
+    restart: always
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    ports:
+      - "8981:8081" # UI Spark Worker
+    environment:
+      SPARK_MODE: worker
+      PYSPARK_PYTHON: python3
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_MEMORY: 1G
+      SPARK_WORKER_CORES: 1
+      SPARK_RPC_AUTHENTICATION_ENABLED: no
+      SPARK_RPC_ENCRYPTION_ENABLED: no
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: no
+      SPARK_SSL_ENABLED: no
+      SPARK_USER: spark
+      SPARK_WORKER_WEBUI_PORT: 8081
+    volumes:
+      #- pyspark_data:/opt/spark-apps # Dossier pour vos scripts Python
+      - share_data:/partage
+      - jupyter_pyspark_data:/opt/spark/work-dir
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://spark-worker-1:8081/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - bigdata
+
+  spark-worker-2:
+    image: apache/spark-py:v3.4.0
+    container_name: spark-worker-2
+    hostname: spark-worker-2
+    user: root
+    restart: always
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    ports:
+      - "8982:8082" # UI Spark Worker
+    environment:
+      SPARK_MODE: worker
+      PYSPARK_PYTHON: python3
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_MEMORY: 1G
+      SPARK_WORKER_CORES: 1
+      SPARK_RPC_AUTHENTICATION_ENABLED: no
+      SPARK_RPC_ENCRYPTION_ENABLED: no
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: no
+      SPARK_SSL_ENABLED: no
+      SPARK_USER: spark
+      SPARK_WORKER_WEBUI_PORT: 8082
+    volumes:
+      #- pyspark_data:/opt/spark-apps # Dossier pour vos scripts Python
+      - share_data:/partage
+      - jupyter_pyspark_data:/opt/spark/work-dir
+    #command: sleep infinity
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://spark-worker-2:8082/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - bigdata
+
+  jupyter-pyspark:
+    image: jupyter/pyspark-notebook:spark-3.4.0
+    #size: 1.7GB
+    container_name: jupyter-pyspark
+    hostname: jupyter-pyspark
+    restart: always
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    user: root
+    ports:
+      - "8988:8888"
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.0,org.apache.spark:spark-avro_2.12:3.4.0 pyspark-shell
+      - JUPYTER_TOKEN=9bde05bc7eb51dfd9fcc8a74db73b7ed2a625d3e9cf216da
+      - SPARK_OPTS=--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.0,org.apache.spark:spark-avro_2.12:3.4.0
+    volumes:
+      - jupyter_pyspark_data:/home/jovyan/work
+      - share_data:/partage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/api/status"]
+      interval: 10s # Vérifie toutes les 10 secondes
+      timeout: 5s # Timeout de 5 secondes pour chaque tentative
+      retries: 10 # Nombre de tentatives avant de considérer le service comme non sain
+      start_period: 5s # Délai d'attente avant de commencer les vérifications de santé
+    networks:
+      - bigdata
+
+volumes:
+  pyspark_data:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/pyspark
+      o: bind
+  mysql_data:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/mysql
+      o: bind
+  redpanda-0:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/redpanda/redpanda_spark
+      o: bind
+  jupyter_pyspark_data:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/jupyter-pyspark
+      o: bind  
+  share_data:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /home/patrick/Téléchargements/ressources/share_folder
+      o: bind
+
+networks:
+  bigdata:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: bigdata_bridge
